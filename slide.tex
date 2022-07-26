@@ -1,0 +1,640 @@
+\documentclass{beamer}
+\usepackage{hyperref}
+\usepackage[T1]{fontenc}
+\usepackage{latexsym,amsmath,xcolor,multicol,booktabs,calligra}
+\usepackage{graphicx,pstricks,listings,stackengine}
+
+\author{George Sittas}
+\title{Monads in Functional Programming}
+\institute{
+    Department of Informatics and Telecommunications (DiT) \\
+    University of Athens
+}
+\date{May, 2022}
+\usepackage{Ritsumeikan}
+
+\def\cmd#1{\texttt{\color{red}\footnotesize $\backslash$#1}}
+\def\env#1{\texttt{\color{blue}\footnotesize #1}}
+\definecolor{deepblue}{rgb}{0,0,0.5}
+\definecolor{deepred}{rgb}{0.6,0,0}
+\definecolor{deepgreen}{rgb}{0,0.5,0}
+\definecolor{halfgray}{gray}{0.55}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    keywordstyle=\bfseries\color{deepblue},
+    emphstyle=\ttfamily\color{deepred},
+    stringstyle=\color{deepgreen},
+    numbers=left,
+    numberstyle=\small\color{halfgray},
+    rulesepcolor=\color{red!20!green!20!blue!20},
+    frame=shadowbox,
+}
+
+\let\oldquote\quote
+\let\endoldquote\endquote
+\renewenvironment{quote}[2][]
+  {\if\relax\detokenize{#1}\relax
+     \def\quoteauthor{#2}%
+   \else
+     \def\quoteauthor{#2~---~#1}%
+   \fi
+   \oldquote}
+  {\par\nobreak\smallskip\hfill(\quoteauthor)%
+   \endoldquote\addvspace{\bigskipamount}}
+
+
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+    \begin{figure}[htpb]
+        \begin{center}
+            \includegraphics[keepaspectratio, scale=0.28]{pic/ekpa.jpg}
+        \end{center}
+    \end{figure}
+\end{frame}
+
+\begin{frame}
+    \tableofcontents[sectionstyle=show,subsectionstyle=show/shaded/hide,subsubsectionstyle=show/shaded/hide]
+\end{frame}
+
+\section{Introduction}
+
+\begin{frame}{What is a monad?}
+    \begin{itemize}
+        \setlength \itemsep{1em}
+        \item An abstract mathematical concept, originally introduced in
+              Category Theory by Roger Godement (1958).
+        \item Use in Functional Programming due to Wadler, Moggi (1990).
+        \item Software design pattern, which enables the
+              \textbf{composition} of functions that take
+              \textit{normal} values and wrap their results in a type
+              (\textit{fancy value}) with additional \textbf{computation}
+              (\textit{context}).
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{How does it help us?}
+    \begin{itemize}[<+-| alert@+>]
+        \setlength \itemsep{1em}
+        \item Reduces code complexity by transforming complicated function
+              sequences into succinct pipelines that abstract away control
+              flow and side-effects (separation of concerns).
+        \item Bridges pure and impure code (eg. I/O, mutable state) in pure
+              functional languages, by isolating the side-effects.
+        \item Makes semantics (\textit{effects}) explicit for a kind of
+              computation, thus improving code clarity.
+        \item Provides a toolkit for expressing and solving a wide range
+              of problems, due to its abstract nature.
+    \end{itemize}
+\end{frame}
+
+\section{Evaluating Expressions}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    Let's suppose that we want to write an expression evaluator. For
+    simplicity, our expressions will only consist of integers that can
+    be combined through division. In Haskell, we could express this as:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      data Expr = Val Int | Div Expr Expr
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm} 
+
+    In this way, we could represent the expression $5 \div 4 \div 3$ as:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      Div (Div (Val 5) (Val 4)) (Val 3)
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    Note: division is left-associative!
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    Given the above definition, we could then write a simple evaluator:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      eval :: Expr -> Int
+      eval (Val n)   = n
+      eval (Div x y) = (eval x) / (eval y)
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    Of course, this definition is bound to fail, were we to try and
+    divide by zero. So, we would like to write a division-safe version
+    instead:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      safeDiv :: Int -> Int -> Maybe Int
+      safeDiv n m = if m == 0 then Nothing
+                              else Just (n / m)
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      eval :: Expr -> Maybe Int
+      eval (Val n) = Just n
+      eval (Div x y) = case eval x of
+        Nothing -> Nothing
+        Just n  -> case eval y of
+            Nothing -> Nothing
+            Just m  -> n `safeDiv` m
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    \begin{itemize}
+        \item Program is now less readable: filled with boilerplate code.
+        \item Pattern: when trying to chain together \textit{computations
+        that might fail}, we first inspect the value we get from the first
+        computation, and if it's a Just value, we feed it forward to\\
+        the next computation, otherwise the whole computation fails.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    We can now abstract this pattern away, by defining a new operator
+    which we will call "bind", that handles all the dirty work for us:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      bind :: Maybe Int -> (Int -> Maybe Int)
+                        -> Maybe Int
+      bind Nothing  f = Nothing
+      bind (Just x) f = Just (f x)
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    Its job is to \textit{un-wrap} a Maybe value, and if it's a Just value,
+    then apply whatever function it's passed as argument to it
+    (here, it's f), and finally re-wrap the value inside a Maybe, in order
+    to \textit{preserve the context of the computation} (possible failure).
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    The above code can then be transformed equivalently into:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      eval :: Expr -> Maybe Int
+      eval (Val n) = Just n
+      eval (Div x y) = eval x `bind` (\n ->
+                       eval y `bind` (\m ->
+                       n `safeDiv` m))
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    \begin{itemize}
+        \item We reduced a portion of the boilerplate code, but in terms of
+              readability, this version isn't \textit{a lot} better (yet).
+        \item Here, the "bind" operator \textit{binds} x to n, and y
+              to m, if both eval computations succeed, and then safeDiv
+              is called.
+        \item Inspecting the type signatures can help to understand this!
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    We actually don't need to define the "bind" operator, because Haskell
+    has already done it for us! Its type signature is (roughly):
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      (>>=) :: m a -> (a -> m b) -> m b
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    \begin{itemize}
+        \item m is a type constructor
+        \item a is its type argument
+        \item Describes the application of a function to a value that's
+              contained in a context m, producing a value in the same
+              context (of possibly different type)
+    \end{itemize}
+
+    \bigbreak
+    So we can rewrite the above program as:
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      eval :: Expr -> Maybe Int
+      eval (Val n) = Just n
+      eval (Div x y) = eval x >>= (\n ->
+                       eval y >>= (\m ->
+                       n `safeDiv` m))
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    The nice thing is that Haskell also provides us with a shorthand
+    notation, called "do notation", for code segments like this one.
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    This leads us to the final form of our initial program:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      safeDiv :: Int -> Int -> Maybe Int
+      safeDiv n m = if m == 0 then Nothing
+                              else Just (n / m)
+
+      eval :: Expr -> Maybe Int
+      eval (Val n) = Just n
+      eval (Div x y) = do n <- eval x
+                          m <- eval y
+                          n `safeDiv` m
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+\end{frame}
+
+\begin{frame}[fragile]{Example: computations that can fail}
+    \begin{itemize}
+        \item Similar level of complexity to the initial, unsafe program.
+        \item The failure management is now handled for us automatically.
+    \end{itemize}
+
+    \bigbreak
+    We have essentially rediscovered the \textit{Maybe monad}!
+    Right away, we can see how doing all this work helped us:
+
+    \bigbreak
+    \begin{itemize}
+        \setlength \itemsep{1em}
+        \item Reduce the complexity of the program, by abstracting away
+              all additional computation in the definition of bind.
+        \item Express the \textit{effect} of the computation in its type
+              explicitly, namely: the evaluation of an expression
+              \textit{might fail}.
+    \end{itemize}
+\end{frame}
+
+\section{Defining the Monad}
+
+\begin{frame}[fragile]{Overview}
+    \begin{quote}{C. A. McCann}
+        For a monad m, a value of type m a represents having access to a value of type a within the context of a monad.
+    \end{quote}
+
+    \begin{itemize}
+        \item In the last example, we briefly mentioned the Maybe monad.
+        \item A question now arises: \textit{what structure does a monad
+        have}?
+    \end{itemize}
+
+    \bigbreak
+    Let's see how we can answer this question in Haskell.
+\end{frame}
+
+\begin{frame}[fragile]{Definition}
+    A monad can be created by defining a \textbf{type constructor} m of
+    one type parameter a, and two operations:
+
+    \bigbreak
+    \begin{itemize}
+        \item \textbf{return} (or \textit{unit}), which receives a value
+        of type a and \textit{wraps} it into a \textbf{monadic value} of
+        type m, using the type constructor:
+
+        \begin{minipage}{\linewidth} \hspace{1cm}
+        \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+          return :: a -> m a
+        \end{lstlisting}
+        \end{minipage} \hspace{1cm}
+
+        \item \textbf{bind} (>>=), which receives a function f over a
+        type a and can transform monadic values m a applying f to the
+        unwrapped value a, returning a monadic value m b:
+
+        \begin{minipage}{\linewidth} \hspace{1cm}
+        \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+  (>>=) :: (m a) -> (a -> m b) -> (m b)
+        \end{lstlisting}
+        \end{minipage} \hspace{1cm}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Definition}
+    \begin{itemize}
+        \setlength \itemsep{1em}
+        \item The bind operator is a way to combine monadic values, and
+              its precise definition differs, depending on the monad at
+              hand.
+        \item The return operator simply takes a value and puts it in some
+        sort of default context -- a minimal context that still yields that
+        value.
+    \end{itemize}
+
+    \bigbreak
+    Note: return has no relation to the return \textit{statement} in
+    imperative languages whatsoever. It's just a way to "promote" a
+    \textit{normal} value into a \textit{fancy} (monadic) one.
+\end{frame}
+
+\begin{frame}[fragile]{Definition}
+    The following \textbf{monadic laws} must also be satisfied:
+
+    \bigbreak
+    \begin{itemize}
+        \item Left-identity:
+
+        \begin{minipage}{\linewidth} \hspace{1cm}
+        \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+          return a >>= h = h a
+        \end{lstlisting}
+        \end{minipage}
+
+        \item Right-identity:
+
+        \begin{minipage}{\linewidth} \hspace{1cm}
+        \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+            m >>= return = m
+        \end{lstlisting}
+        \end{minipage}
+
+        \item Associativity:
+
+        \begin{minipage}{\linewidth} \hspace{1cm}
+        \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+            (m >>= g) >>= h =
+        = m >>= (\x -> g x >>= h)
+        \end{lstlisting}
+        \end{minipage} \hspace{1cm}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Maybe monad, revisited}
+    Having discussed about the general structure of a monad, we can
+    finally see the complete definition of the Maybe monad in Haskell:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+          instance Monad Maybe where
+            return x = Just x
+            Nothing >>= f = Nothing
+            Just x >>= f = f x
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+\end{frame}
+
+\section{More Examples}
+
+\begin{frame}[fragile]{The List monad}
+    Haskell defines various monads, each representing a kind of
+    computation with additional context or effects.
+
+    \bigbreak
+    The list type constructor is another classic example. Observe:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+          instance Monad [] where
+            return x = [x]
+            xs >>= f = concat (map f xs)
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+\end{frame}
+
+\begin{frame}[fragile]{The List monad}
+    But \dots \textit{how is a list a value with additional context}?
+    One way to look at this, is that a list is a value that contains
+    many values at the same time, something like \textit{a non-deterministic
+    computation}.
+
+    \bigbreak
+    \begin{itemize}
+        \setlength \itemsep{1em}
+        \item return just takes a normal value and wraps it around a list,
+              providing a minimal context.
+        \item bind is more interesting, see the following example.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{The List monad}
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+        ghci> [3,4,5] >>= \x -> [x,-x]
+        [3,-3,4,-4,5,-5]
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    Note: remember, the bind operator takes a monadic value and a function,
+    and returns a monadic value in the same context (list)!
+
+    \bigbreak
+    \begin{itemize}
+        \item bind takes a non-deterministic computation and feeds
+              every result to the provided function, which results
+              in a new non- deterministic computation
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{The List monad}
+    List comprehensions are actually syntactic sugar for using lists as
+    monads! Observe:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+[1,2] >>= \n -> ['a','b'] >>= \c -> return (n,c)
+
+do { n <- [1,2]; c <- ['a','b']; return (n,c) }
+
+[ (n,c) | n <- [1,2], c <- ['a','b'] ]
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    These three are equivalent. They all output the following:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+        [(1,'a'),(1,'b'),(2,'a'),(2,'b')]
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+\end{frame}
+
+\begin{frame}[fragile]{The State monad}
+    \begin{itemize}
+        \item Another cool monad is the \textit{State} monad.
+        \item It represents computations that need some kind of state
+              (context) (examples: assignment, RNG, parsers, games).
+        \item These computations can be thought of as functions that
+              take a state and output a value and a new state with it:
+
+        \begin{minipage}{\linewidth} \hspace{1cm}
+        \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+               s -> (a,s)
+        \end{lstlisting}
+        \end{minipage} \hspace{1cm}
+
+             Here, s is the state's type and a is the result's type.
+        \item The point is to \textit{lazily} construct chains of
+              functions that simulate changing state, yet in an
+              immutable, referentially transparent way.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{The State monad}
+    The State monad can be defined as follows:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+newtype State s a = State { runState :: s -> (a,s) }
+
+instance Monad (State s) where
+  return x = State (\s -> (x,s))
+  (State h) >>= f =
+    State (\s -> let (a,s')    = h s
+                     (State g) = f a
+                 in g s')
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    \begin{itemize}
+        \item return: take a value and make a \textit{stateful computation}
+              that always has that value as its result.
+        \item bind: get the current state, feed it to a computation f and
+              get a new \textit{stateful computation} as output, with its
+              state updated accordingly.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{The State monad}
+    Here, runState is a way of executing such a computation: we pass a
+    state to it and it executes each consecutive stateful computation,
+    threading each new state to the next function each time. It returns
+    the \textit{actual value} of the computation and the resulting state.
+
+    \bigbreak
+    There are two useful functions operating on stateful computations:
+
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+      get = State ( \s -> (s,s) )
+      put s = State ( \s -> ((),s) )
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    \begin{itemize}
+        \item get: take current state and present it as the result
+        \item put: take some state and make a stateful function that
+              replaces the current state with it.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{The State monad}
+    Let's see a simple string parsing game as an example:
+
+    \bigbreak
+    \begin{itemize}
+        \item Produce a number from a string of a's, b's and c's.
+        \item By default, the game is off, "c" toggles the game on and off.
+        \item An "a" gives +1, and a "b" gives -1.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{The State monad}
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+type GameValue = Int
+type GameState = (Bool, Int)
+
+playGame :: String -> State GameState GameValue
+playGame [] = do
+    (_, score) <- get
+    return score
+
+playGame (x:xs) = do
+    (on, score) <- get
+    case x of
+      'a' | on -> put (on, score + 1)
+      'b' | on -> put (on, score - 1)
+      'c' |    -> put (not on, score)
+      _        -> put (on, score)
+    playGame xs
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+\end{frame}
+
+\begin{frame}[fragile]{The State monad}
+    And we can then play the game like so:
+
+    \bigbreak
+    \begin{minipage}{\linewidth} \hspace{1cm}
+    \begin{lstlisting}[language=haskell, numbers=none, frame=none]
+ghci> fst (runState (playGame "cabca") (False, 0))
+0
+    \end{lstlisting}
+    \end{minipage} \hspace{1cm}
+
+    \bigbreak
+    Which is the expected result. If it's not easy to see what's going
+    on, maybe applying currying and lazy evaluation will help to grasp
+    the execution flow.
+\end{frame}
+
+\begin{frame}[fragile]{Recap}
+    Again, we can see the benefits that monads give us, as we discussed
+    earlier:
+
+    \bigbreak
+    \begin{itemize}
+        \setlength \itemsep{1em}
+        \item In lists, abstracting away the chaining of concat and map
+              gave us a pretty elegant tool, which enhances the program's
+              expressibility: list comprehensions
+        \item In stateful computations, we have abstracted away the
+              threading of the states, creating a sense of "mutable"
+              state in our program, even though it's all pure under
+              the hood!
+        \item The types express the computational effects clearly: with
+              lists, each computation can have 0 or more values, whilst
+              with stateful computations, additional state is needed.
+    \end{itemize}
+\end{frame}
+
+\section{Closing Remarks}
+
+\begin{frame}[fragile]{Monads in the wild}
+    Monads can be found in various different pieces of software. For
+    instance, here are a couple of them:
+
+    \bigbreak
+    \begin{itemize}
+        \setlength \itemsep{1em}
+        \item Parsing: the Parsec library uses monads to combine simpler
+              parsing rules into more complex ones.
+        \item LINQ by Microsoft provides a query language for the .NET
+              framework that is heavily influenced by functional prog.
+              concepts, including operators for composing queries
+              monadically.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Another point of view}
+    Typically, programmers will use the bind operator to chain
+    \textit{monadic functions} into a sequence, which has led
+    some to describe monads as \textbf{programmable semicolons},
+    which references the way other languages (imperative) use
+    semicolons to separate statements.
+\end{frame}
+
+\begin{frame}[fragile]{References}
+    \begin{itemize}
+        \item Learn You A Haskell For Greater Good
+        \item Wikipedia - Monads
+        \item Haskell wiki - All About Monads
+        \item Computerphile - What is a Monad?
+    \end{itemize}
+\end{frame}
+
+\end{document}
