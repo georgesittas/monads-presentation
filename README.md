@@ -5,6 +5,6 @@ It is by no means an exhaustive survey on monads, but serves as a (hopefully) ge
 familiar with Haskell, since it's what I used to demonstrate the concept, but the material should be relatively simple to follow, as no advanced
 features of the language were used.
 
-The presentation played the role of semester-long survey project in the
+The presentation played the role of a semester-long survey project in the
 [Programming Language Semantics course](https://cgi.di.uoa.gr/~prondo/SEMANTICS/semantics.html), which is taught by
 prof. [Panagiotis Rontogiannis](https://cgi.di.uoa.gr/~prondo/) in [DiT](https://www.di.uoa.gr/) (UoA).
