@@ -126,9 +126,8 @@
     \end{lstlisting}
     \end{minipage} \hspace{1cm}
 
-    Of course, this definition is bound to fail, were we to try and
-    divide by zero. So, we would like to write a division-safe version
-    instead:
+    However, using this definition division by zero will lead to a
+    failure. Hence, we'd like to write a division-safe version instead:
 
     \begin{minipage}{\linewidth} \hspace{1cm}
     \begin{lstlisting}[language=haskell, numbers=none, frame=none]
@@ -477,9 +476,10 @@ do { n <- [1,2]; c <- ['a','b']; return (n,c) }
         \end{minipage} \hspace{1cm}
 
              Here, s is the state's type and a is the result's type.
-        \item The point is to \textit{lazily} construct chains of
-              functions that simulate changing state, yet in an
-              immutable, referentially transparent way.
+        \item The point is to \textit{lazily} construct a chain of
+              function calls that, when it's actually ran, simulates
+              changing state while at the same time maintaining the
+              referential transparency property.
     \end{itemize}
 \end{frame}
 
@@ -511,8 +511,8 @@ instance Monad (State s) where
 \begin{frame}[fragile]{The State monad}
     Here, runState is a way of executing such a computation: we pass a
     state to it and it executes each consecutive stateful computation,
-    threading each new state to the next function each time. It returns
-    the \textit{actual value} of the computation and the resulting state.
+    threading every new state to the next function. It returns the
+    \textit{actual value} of the computation and the resulting final state.
 
     \bigbreak
     There are two useful functions operating on stateful computations:
@@ -577,14 +577,16 @@ ghci> fst (runState (playGame "cabca") (False, 0))
     \end{minipage} \hspace{1cm}
 
     \bigbreak
-    Which is the expected result. If it's not easy to see what's going
-    on, maybe applying currying and lazy evaluation will help to grasp
-    the execution flow.
+    Applying playGame to "cabca" yields a State value, which we then
+    \textit{unwrap} using runState to get a function that receives a
+    GameState value (False, 0) (type s) and carries out the stateful
+    computation. After it's done, we only need to extract the result
+    (type a).
 \end{frame}
 
 \begin{frame}[fragile]{Recap}
-    Again, we can see the benefits that monads give us, as we discussed
-    earlier:
+    Arguably, those were less trivial examples, but we can again see the
+    benefits of using monads, as discussed earlier:
 
     \bigbreak
     \begin{itemize}
@@ -594,7 +596,7 @@ ghci> fst (runState (playGame "cabca") (False, 0))
               expressibility: list comprehensions
         \item In stateful computations, we have abstracted away the
               threading of the states, creating a sense of "mutable"
-              state in our program, even though it's all pure under
+              state in our program, even though it's all "pure" under
               the hood!
         \item The types express the computational effects clearly: with
               lists, each computation can have 0 or more values, whilst
@@ -625,7 +627,7 @@ ghci> fst (runState (playGame "cabca") (False, 0))
     \textit{monadic functions} into a sequence, which has led
     some to describe monads as \textbf{programmable semicolons},
     which references the way other languages (imperative) use
-    semicolons to separate statements.
+    semicolons to chain statements.
 \end{frame}
 
 \begin{frame}[fragile]{References}
